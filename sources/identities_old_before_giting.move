@@ -4,7 +4,7 @@ module identities::certificates {
     use sui::tx_context::{Self, TxContext};
     use std::string;
     use sui::typed_id::{Self, TypedID};
-    use sui::table::{Self, Table};
+    use sui::table::{Self, Table}
 
     const ENoPermissionToVerify: u64 = 0;
     const ENoFieldInPermission: u64 = 1;
@@ -19,13 +19,8 @@ module identities::certificates {
     // has no drop
     struct Certificate has key, store {
         id: UID,
-        name: Name,
-        year: Year,
-    }
-
-    struct GrantPermissionsCap has key, store {
-        id: UID,
-        certificate_id: TypedID<Certificate>,
+        name: string::String,
+        year: u128,
     }
 
     struct Permission<phantom T: store> has key {
@@ -33,12 +28,16 @@ module identities::certificates {
         certificate_id: TypedID<Certificate>, // TypedID has drop
     }
 
-    struct Year has store, drop { // has drop for easier dropping
+    struct Year has store {
         value: u128,
     }
 
-    struct Name has store, drop {
+    struct Name has store {
         value: string::String,
+    }
+
+    struct University has key, store {
+        certificates_table: Table<TypedID<Certificate>, Certificate>,
     }
 
     fun init(ctx: &mut TxContext) {
@@ -56,30 +55,17 @@ module identities::certificates {
 
     // allow recipient to request a certificate instead of issue it directly
     public entry fun issue_certificate(_: &CertCreatorCap,
-        name_: vector<u8>,
-        year_: u128,
+        name: vector<u8>,
+        year: u128,
         certificates_table: &mut Table<TypedID<Certificate>, Certificate>,
-        certificate_recipient: address,
-        ctx: &mut TxContext
-        ) {
+        ctx: &mut TxContext) {
             let certificate = Certificate {
                 id: object::new(ctx),
-                name: Name { value: name_ },
-                year: Year { value: year_ },
-            }; // make the certificate
-
-            let certificate_id = typed_id::new(certificate);
-            table::add(certificates_table, certificate_id, certificate); // add the certificate to the table
-
-            let grant_permissions_cap = GrantPermissionsCap {
-                id: object::new(ctx),
-                certificate_id: certificate_id,
-            }; // make the capability for granting permissions
-
-            transfer::transfer(
-                grant_permissions_cap,
-                tx_context::sender(ctx),
-            ) // transfer that capability
+                name,
+                year,
+            };
+            let certificate_id
+            table::add(certificates_table, )
     }
 
     // certificate is non-transferable but can be destroyed. need to think of safe-transfer logic to new address.
@@ -88,41 +74,43 @@ module identities::certificates {
         object::delete(id);
     }
 
-    public entry fun give_permission_verify_certificate(grand_permission: &GrantPermissionsCap, recipient: address, ctx: &mut TxContext) { 
+    public entry fun give_permission_verify_certificate(certificate: &Certificate, recipient: address, ctx: &mut TxContext) { 
         transfer::transfer(
             Permission<Certificate> {
             id: object::new(ctx),
-            certificate_id: grand_permission.certificate_id,
+            certificate_id: typed_id::new(certificate),
         },
             recipient
         )
     }
 
-    public entry fun give_permission_verify_name(grand_permission: &GrantPermissionsCap, recipient: address, ctx: &mut TxContext) { 
+    public entry fun give_permission_verify_name(certificate: &Certificate, recipient: address, ctx: &mut TxContext) { 
         transfer::transfer(
-            Permission<Name> {
+            Permission<string::String> {
             id: object::new(ctx),
-            certificate_id: grand_permission.certificate_id,
+            certificate_id: typed_id::new(certificate),
         },
             recipient
         )
     }
 
-    public entry fun give_permission_verify_year(grand_permission: &GrantPermissionsCap, recipient: address, ctx: &mut TxContext) { 
+    public entry fun give_permission_verify_year(certificate: &Certificate, recipient: address, ctx: &mut TxContext) { 
         transfer::transfer(
-            Permission<Year> {
+            Permission<u8> {
             id: object::new(ctx),
-            certificate_id: grand_permission.certificate_id,
+            certificate_id: typed_id::new(certificate),
         },
             recipient
         )
     }
-                                        // OWNER A owns table<UID, Certificate>  // OWNER B owns permission
-    public entry fun verify_certificate(permission: Permission<Certificate>, _ctx: &mut TxContext) {
-        let Permission { id, certificate_id: certificate_id,} = permission;
+
+    
+                                        // OWNER A owns certificate  // OWNER B owns permission
+    public entry fun verify_certificate(certificate: &Certificate, permission: Permission<Certificate>, _ctx: &mut TxContext) {
+        assert!(typed_id::equals_object(&permission.certificate_id, certificate), ENoPermissionToVerify);
+        let Permission { id, certificate_id: _,} = permission;
         object::delete(id);
-    } // intent is to make OWNER B to call this function to verify the authenticity of the certificate
-    // idea is to send the permission to 
+    } // intent is to make OWNER B to call this function to verify the authenticity of the certificate possess by OWNER A
 
     public entry fun verify_name(certificate: &Certificate, permission: Permission<string::String>, name: vector<u8>, _ctx: &mut TxContext) {
         assert!(typed_id::equals_object(&permission.certificate_id, certificate), ENoPermissionToVerify);
