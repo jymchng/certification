@@ -3,8 +3,8 @@ name = "sui_identities"
 version = "0.0.1"
 
 [dependencies]
+# Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework", rev = "devnet" }
 Sui = { local = "../../sui/crates/sui-framework/"}
 
 [addresses]
-identities =  "0x0"
-sui =  "0000000000000000000000000000000000000002"
+sui_identities = "0x0"
