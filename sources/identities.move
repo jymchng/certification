@@ -36,7 +36,7 @@ module identities::certificates {
     }
 
     struct Year has store, drop { // has drop for easier dropping
-        value: u128,
+        value: string::String,
     }
 
     struct Name has store, drop {
@@ -51,14 +51,14 @@ module identities::certificates {
             tx_context::sender(ctx)
         );
         transfer::share_object(
-            table::new<TypedID<Certificate>, Certificate>(),
+            table::new<TypedID<Certificate>, Certificate>(ctx),
         );
     }
 
     // allow recipient to request a certificate instead of issue it directly
     public entry fun issue_certificate(_: &CertCreatorCap,
         name_: vector<u8>,
-        year_: u128,
+        year_: vector<u8>,
         certificates_table: &mut Table<TypedID<Certificate>, Certificate>,
         certificate_recipient: address,
         ctx: &mut TxContext
@@ -66,7 +66,7 @@ module identities::certificates {
             let certificate = Certificate {
                 id: object::new(ctx),
                 name: Name { value: string::utf8(name_) },
-                year: Year { value: year_ },
+                year: Year { value: string::utf8(year_) },
             }; // make the certificate
 
             let certificate_id = typed_id::new(&certificate);
@@ -85,12 +85,12 @@ module identities::certificates {
 
     // certificate is non-transferable but can be destroyed. need to think of safe-transfer logic to new address.
     public entry fun destroy_certificate(certificate: Certificate) {
-        let Certificate {id, name: _, year: _} = certificate;
-        object::delete(id);
+        // let Certificate {id: id, name: _, year: _} = certificate;
+        // object::delete(id);
     }
 
     public entry fun destory_permission<T: store>(permission: Permission<T>) {
-        let Permission {id, certificate_id: _,} = permission;
+        let Permission {id: id, certificate_id: _,} = permission;
         object::delete(id);
     }
 
@@ -98,12 +98,13 @@ module identities::certificates {
         let certificate_id = grant_permission.certificate_id;
         let certificate = table::borrow(certificates_table, certificate_id);
         assert!(typed_id::equals_object(&certificate_id, certificate), ECertIDDoesNotMatch); // just to be absolutely sure
-        table::remove(certificates_table, *certificate_id);
+        table::remove(certificates_table, certificate_id);
+        // destroy_certificate(*certificate_mutable);
     }
 
     public entry fun destory_grant_permission(grant_permission: GrantPermissionsCap, certificates_table: &mut Table<TypedID<Certificate>, Certificate>) {
         destory_record_in_table(&grant_permission, certificates_table);
-        let GrantPermissionsCap {id, certificate_id:_,} = grant_permission;
+        let GrantPermissionsCap {id: id, certificate_id:_,} = grant_permission;
         object::delete(id);
     }
 
@@ -167,7 +168,8 @@ module identities::certificates {
         if (field == b"year") {
             let certificate = table::borrow(certificates_table, certificate_id);
             let year_value = certificate.year.value;
-            assert!(year_value == value, EYearIsIncorrect)
+            let to_be_verified_year = string::utf8(value);
+            assert!(year_value == to_be_verified_year, EYearIsIncorrect)
         }
     }
 }
