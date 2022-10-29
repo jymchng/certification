@@ -1,4 +1,4 @@
-module 0x0::certificates {
+module certification::certificates {
     use sui::object::{Self, UID};
     use sui::transfer;
     use sui::tx_context::{Self, TxContext};
@@ -20,7 +20,7 @@ module 0x0::certificates {
     
     // has no drop
     struct Certificate has key, store {
-        // id: UID,
+        id: UID,
         name: Name,
         year: Year,
     }
@@ -64,7 +64,7 @@ module 0x0::certificates {
         ctx: &mut TxContext
         ) {
             let certificate = Certificate {
-                // id: object::new(ctx),
+                id: object::new(ctx),
                 name: Name { value: string::utf8(name_) },
                 year: Year { value: string::utf8(year_) },
             }; // make the certificate
@@ -84,7 +84,7 @@ module 0x0::certificates {
     }
 
     // certificate is non-transferable but can be destroyed. need to think of safe-transfer logic to new address.
-    public entry fun destroy_certificate(_certificate: Certificate, ctx: &mut TxContext) {
+    public entry fun destroy_certificate(certificate: Certificate, ctx: &mut TxContext) {
         let Certificate {id: id, name: _, year: _} = certificate;
         object::delete(id);
     }
@@ -98,12 +98,12 @@ module 0x0::certificates {
         let certificate_id = grant_permission.certificate_id;
         let certificate = table::borrow(certificates_table, certificate_id);
         assert!(typed_id::equals_object(&certificate_id, certificate), ECertIDDoesNotMatch); // just to be absolutely sure
-        cert_to_be_destoryed = table::remove(certificates_table, certificate_id);
-        destroy_certificate(cert_to_be_destoryed, ctx);
+        let cert_to_be_destroyed = table::remove(certificates_table, certificate_id);
+        destroy_certificate(cert_to_be_destroyed, ctx);
     }
 
     public entry fun destory_grant_permission(grant_permission: GrantPermissionsCap, certificates_table: &mut Table<TypedID<Certificate>, Certificate>, ctx: &mut TxContext) {
-        destory_record_in_table(&grant_permission, certificates_table);
+        destory_record_in_table(&grant_permission, certificates_table, ctx);
         let GrantPermissionsCap {id: id, certificate_id:_,} = grant_permission;
         object::delete(id);
     }
