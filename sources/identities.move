@@ -11,6 +11,8 @@ module identities::certificates {
     const ENameIsIncorrect: u64 = 2;
     const EVerifyWhatInPermissionIsNotName: u64 = 3;
     const EYearIsIncorrect: u64 = 4;
+    const ECertIDDoesNotMatch: u64 = 5;
+    const EFailedCertificateVerification: u64 = 6;
 
     struct CertCreatorCap has key, store {
         id: UID,
@@ -48,9 +50,8 @@ module identities::certificates {
             },
             tx_context::sender(ctx)
         );
-        transfer::transfer(
+        transfer::share_object(
             table::new<TypedID<Certificate>, Certificate>(),
-            tx_context::sender(ctx)
         );
     }
 
@@ -64,11 +65,11 @@ module identities::certificates {
         ) {
             let certificate = Certificate {
                 id: object::new(ctx),
-                name: Name { value: name_ },
+                name: Name { value: string::utf8(name_) },
                 year: Year { value: year_ },
             }; // make the certificate
 
-            let certificate_id = typed_id::new(certificate);
+            let certificate_id = typed_id::new(&certificate);
             table::add(certificates_table, certificate_id, certificate); // add the certificate to the table
 
             let grant_permissions_cap = GrantPermissionsCap {
@@ -78,7 +79,7 @@ module identities::certificates {
 
             transfer::transfer(
                 grant_permissions_cap,
-                tx_context::sender(ctx),
+                certificate_recipient
             ) // transfer that capability
     }
 
@@ -88,11 +89,29 @@ module identities::certificates {
         object::delete(id);
     }
 
-    public entry fun give_permission_verify_certificate(grand_permission: &GrantPermissionsCap, recipient: address, ctx: &mut TxContext) { 
+    public entry fun destory_permission<T: store>(permission: Permission<T>) {
+        let Permission {id, certificate_id: _,} = permission;
+        object::delete(id);
+    }
+
+    fun destory_record_in_table(grant_permission: &GrantPermissionsCap, certificates_table: &mut Table<TypedID<Certificate>, Certificate>): () {
+        let certificate_id = grant_permission.certificate_id;
+        let certificate = table::borrow(certificates_table, certificate_id);
+        assert!(typed_id::equals_object(&certificate_id, certificate), ECertIDDoesNotMatch); // just to be absolutely sure
+        table::remove(certificates_table, *certificate_id);
+    }
+
+    public entry fun destory_grant_permission(grant_permission: GrantPermissionsCap, certificates_table: &mut Table<TypedID<Certificate>, Certificate>) {
+        destory_record_in_table(&grant_permission, certificates_table);
+        let GrantPermissionsCap {id, certificate_id:_,} = grant_permission;
+        object::delete(id);
+    }
+
+    public entry fun give_permission_verify_certificate(grant_permission: &GrantPermissionsCap, recipient: address, ctx: &mut TxContext) { 
         transfer::transfer(
             Permission<Certificate> {
             id: object::new(ctx),
-            certificate_id: grand_permission.certificate_id,
+            certificate_id: grant_permission.certificate_id,
         },
             recipient
         )
@@ -117,25 +136,38 @@ module identities::certificates {
             recipient
         )
     }
-                                        // OWNER A owns table<UID, Certificate>  // OWNER B owns permission
-    public entry fun verify_certificate(permission: Permission<Certificate>, _ctx: &mut TxContext) {
+
+    public entry fun verify_certificate(permission: Permission<Certificate>, certificates_table: &Table<TypedID<Certificate>, Certificate>, _ctx: &mut TxContext) {
         let Permission { id, certificate_id: certificate_id,} = permission;
         object::delete(id);
-    } // intent is to make OWNER B to call this function to verify the authenticity of the certificate
-    // idea is to send the permission to 
-
-    public entry fun verify_name(certificate: &Certificate, permission: Permission<string::String>, name: vector<u8>, _ctx: &mut TxContext) {
-        assert!(typed_id::equals_object(&permission.certificate_id, certificate), ENoPermissionToVerify);
-        let name = string::utf8(name);
-        assert!(name==certificate.name, ENameIsIncorrect);
-        let Permission { id, certificate_id: _,} = permission;
-        object::delete(id);
+        let certificate_exists = table::contains(certificates_table, certificate_id);
+        if (!certificate_exists) {
+            abort EFailedCertificateVerification
+        };
     }
 
-    public entry fun verify_year(certificate: &Certificate, permission: Permission<u128>, year: u128, _ctx: &mut TxContext) {
-        assert!(typed_id::equals_object(&permission.certificate_id, certificate), ENoPermissionToVerify);
-        assert!(year==certificate.year, EYearIsIncorrect);
-        let Permission { id, certificate_id: _,} = permission;
+    public entry fun verify_field<T: store>(permission: Permission<T>,
+        field: vector<u8>,
+        value: vector<u8>,
+        certificates_table: &Table<TypedID<Certificate>, Certificate>,
+        _ctx: &mut TxContext) {
+        
+        let Permission { id, certificate_id: certificate_id,} = permission;
         object::delete(id);
+        let certificate_exists = table::contains(certificates_table, certificate_id);
+        if (!certificate_exists) {
+            abort EFailedCertificateVerification
+        };
+        if (field == b"name") {
+            let certificate = table::borrow(certificates_table, certificate_id);
+            let name_value = certificate.name.value;
+            let to_be_verified_name = string::utf8(value);
+            assert!(name_value == to_be_verified_name, ENameIsIncorrect)
+        };
+        if (field == b"year") {
+            let certificate = table::borrow(certificates_table, certificate_id);
+            let year_value = certificate.year.value;
+            assert!(year_value == value, EYearIsIncorrect)
+        }
     }
 }
