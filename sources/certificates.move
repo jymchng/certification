@@ -148,7 +148,7 @@ module suicertification::certificates {
 
     public entry fun give_permission_verify_name(grand_permission: &GrantPermissionsCap, recipient: address, ctx: &mut TxContext) { 
         transfer::transfer(
-            Permission<Name> {
+            Permission<Masked<Name>> {
             id: object::new(ctx),
             certificate_id: grand_permission.certificate_id,
         },
@@ -158,7 +158,7 @@ module suicertification::certificates {
 
     public entry fun give_permission_verify_year(grand_permission: &GrantPermissionsCap, recipient: address, ctx: &mut TxContext) { 
         transfer::transfer(
-            Permission<Year> {
+            Permission<Masked<Year>> {
             id: object::new(ctx),
             certificate_id: grand_permission.certificate_id,
         },
